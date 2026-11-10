@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0d1726">
+<title>Kheiri's Kiosk Roboter</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0d1726;color:#fff;font-family:system-ui,-apple-system,Roboto,sans-serif;overflow:hidden}
+#app{position:fixed;inset:0;display:flex;flex-direction:column}
+#faceWrap{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+#face{width:min(92vw,80vh);height:auto}
+.eye{fill:#6fe3ff;transition:fill .4s}
+.pupil{fill:#0d1726}
+.shine{fill:#fff}
+#mouth{fill:none;stroke:#6fe3ff;stroke-width:9;stroke-linecap:round;transition:stroke .4s}
+#bubble{position:absolute;top:4%;left:50%;transform:translateX(-50%) scale(.8);opacity:0;transition:all .3s;background:#fff;color:#1b2b44;border-radius:22px;padding:14px 22px;min-width:60%;max-width:92%;text-align:center;box-shadow:0 8px 30px #0008}
+#bubble.show{opacity:1;transform:translateX(-50%) scale(1)}
+#bubble .n{font-size:20px;line-height:1.3}
+#bubble .p{font-size:40px;font-weight:700;color:#c0392b;margin-top:4px}
+#bubble .t{font-size:18px;line-height:1.4}
+#heard{position:absolute;bottom:8px;left:0;right:0;text-align:center;color:#8fa3bf;font-size:15px;padding:0 16px;min-height:20px}
+#bar{display:flex;gap:12px;align-items:center;justify-content:center;padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
+.btn{border:0;border-radius:999px;background:#1f3150;color:#fff;font-size:22px;width:56px;height:56px;display:flex;align-items:center;justify-content:center}
+#mic{width:auto;padding:0 34px;height:68px;background:#2e86de;font-size:21px;font-weight:600;gap:10px}
+#mic.on{background:#e74c3c;animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(1.06)}}
+#typeRow{display:none;gap:8px;padding:0 14px 10px}
+#typeRow.show{display:flex}
+#typeRow input{flex:1;font-size:18px;padding:12px 14px;border-radius:14px;border:0;background:#1f3150;color:#fff}
+#typeRow button{font-size:18px;padding:0 18px;border-radius:14px;border:0;background:#2e86de;color:#fff}
+.overlay{position:fixed;inset:0;background:#0d1726f2;display:none;overflow:auto;padding:20px 18px 40px;z-index:10}
+.overlay.show{display:block}
+.overlay h2{font-size:22px;margin:6px 0 14px}
+.overlay label{display:block;font-size:14px;color:#8fa3bf;margin:14px 0 6px}
+.overlay input[type=text],.overlay textarea{width:100%;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #2b4166;background:#15233a;color:#fff}
+.overlay textarea{min-height:64px}
+.row{display:flex;gap:10px;align-items:center;margin-top:10px}
+.big{font-size:17px;padding:12px 18px;border-radius:12px;border:0;background:#2e86de;color:#fff;margin-top:16px;width:100%}
+.ghost{background:#1f3150}
+.small{font-size:13px;color:#8fa3bf;margin-top:6px;line-height:1.5}
+#start{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:16px}
+#start.show{display:flex}
+#start h1{font-size:28px}
+#start p{color:#8fa3bf;font-size:16px;max-width:420px;line-height:1.5}
+#startBtn{font-size:22px;padding:18px 48px;border-radius:999px;border:0;background:#2e86de;color:#fff;font-weight:600}
+video,canvas.hid{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+#camDot{position:absolute;top:12px;right:14px;width:12px;height:12px;border-radius:50%;background:#555}
+#camDot.on{background:#2ecc71}
+#camDot.face{background:#f1c40f}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="faceWrap">
+    <div id="camDot" title="Kamera"></div>
+    <svg id="face" viewBox="0 0 400 300">
+      <g id="eyes">
+        <g id="eyeL"><ellipse class="eye" cx="125" cy="120" rx="52" ry="62"/><circle class="pupil" id="pL" cx="125" cy="120" r="24"/><circle class="shine" id="sL" cx="133" cy="110" r="8"/></g>
+        <g id="eyeR"><ellipse class="eye" cx="275" cy="120" rx="52" ry="62"/><circle class="pupil" id="pR" cx="275" cy="120" r="24"/><circle class="shine" id="sR" cx="283" cy="110" r="8"/></g>
+      </g>
+      <path id="mouth" d="M160 238 Q200 262 240 238"/>
+    </svg>
+    <div id="bubble"></div>
+    <div id="heard"></div>
+  </div>
+  <div id="typeRow"><input id="typeIn" placeholder="Frage eintippen, z.B. Was kostet Red Bull?"><button id="typeGo">OK</button></div>
+  <div id="bar">
+    <button class="btn" id="kbd" aria-label="Tastatur">⌨</button>
+    <button class="btn" id="mic">🎤 Sprechen</button>
+    <button class="btn" id="gear" aria-label="Einstellungen">⚙</button>
+  </div>
+</div>
+
+<div class="overlay show" id="start">
+  <h1>Kheiri's Kiosk Roboter</h1>
+  <p>Prototyp ohne API: beantwortet Preisfragen und Standardfragen offline. Antippen startet Stimme, Mikrofon und Kamera.</p>
+  <button id="startBtn">Starten</button>
+</div>
+
+<div class="overlay" id="settings">
+  <h2>Einstellungen</h2>
+  <label>Name des Ladens</label><input type="text" id="sShop">
+  <label>Begrüßung (wenn ein Kunde kommt)</label><input type="text" id="sGreet">
+  <label>Öffnungszeiten</label><input type="text" id="sHours">
+  <label>Post / Pakete</label><textarea id="sPost"></textarea>
+  <label>Lotto</label><textarea id="sLotto"></textarea>
+  <label>Angebot des Tages</label><input type="text" id="sOffer">
+  <label>Artikelliste (CSV: Name + Preis, z.B. aus der Preisscanner-App)</label>
+  <input type="file" id="csv" accept=".csv,.txt,text/csv">
+  <div class="small" id="csvInfo"></div>
+  <div class="row"><input type="checkbox" id="sCam" style="width:22px;height:22px"><span>Kamera benutzen (Augen folgen dem Kunden)</span></div>
+  <div class="row"><input type="checkbox" id="sMirror" style="width:22px;height:22px"><span>Blickrichtung spiegeln</span></div>
+  <div class="row"><input type="checkbox" id="sAuto" style="width:22px;height:22px"><span>Kunden automatisch begrüßen</span></div>
+  <button class="big" id="save">Speichern</button>
+  <button class="big ghost" id="close">Schließen</button>
+  <div class="small">Alles bleibt nur auf diesem Gerät. Kamerabilder werden nicht gespeichert oder gesendet.</div>
+</div>
+
+<video id="vid" playsinline muted></video>
+<canvas id="cv" class="hid" width="64" height="48"></canvas>
+
+<script>
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+const DEF={shop:"Kheiri's Kiosk",greet:"Hallo und herzlich willkommen! Fragen Sie mich gern nach einem Preis.",hours:"Montag bis Samstag von 7 bis 22 Uhr, Sonntag von 9 bis 20 Uhr.",post:"Bei uns können Sie Hermes Pakete abgeben und abholen. Fragen Sie gern an der Kasse.",lotto:"Lotto, Eurojackpot und Rubbellose bekommen Sie direkt an der Kasse. Ziehung Lotto 6 aus 49 ist mittwochs und samstags.",offer:"",cam:true,mirror:false,auto:true};
+let cfg=Object.assign({},DEF,store.get('cfg',{}));
+
+const DEMO=[["Red Bull 0,25 l",1.99],["Red Bull Sugarfree 0,25 l",1.99],["Monster Energy 0,5 l",2.29],["Coca-Cola 0,5 l",1.79],["Coca-Cola Zero 0,5 l",1.79],["Fanta 0,5 l",1.79],["Wasser still 0,5 l",0.99],["Club Mate 0,5 l",1.99],["Becks 0,5 l",1.49],["Astra Urtyp 0,33 l",1.29],["Snickers",1.29],["Twix",1.29],["Kinder Bueno",1.49],["Haribo Goldbären 175 g",1.69],["Marlboro Red",10.00],["Pall Mall Red",8.40],["OCB Papers",1.30],["Feuerzeug",1.00],["Kaffee to go",1.80]];
+let products=store.get('products',null)||DEMO;
+
+const norm=s=>(s||'').toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+let index=[];
+function buildIndex(){index=products.map(p=>{const n=norm(p[0]);return{name:p[0],price:p[1],n,c:n.replace(/ /g,'')}})}
+buildIndex();
+
+const STOP=new Set('was wie viel kostet kosten preis preise der die das ein eine einen haben sie ihr hast du ist sind gibt es fuer von mit und oder bitte mal ich moechte wollte habe hab den dem des noch auch eigentlich denn kann man hier dose flasche euro'.split(' '));
+
+function findProducts(q){
+  const nq=norm(q);const toks=nq.split(' ').filter(t=>t.length>=2&&!STOP.has(t));
+  if(!toks.length)return[];
+  const compact=toks.join('');
+  let res=[];
+  for(const p of index){
+    let s=0;
+    for(const t of toks){if(p.n.split(' ').includes(t))s+=t.length+2;else if(t.length>=3&&p.c.includes(t))s+=t.length}
+    if(compact.length>=4&&p.c.includes(compact))s+=compact.length+3;
+    if(s>0)res.push({p,s:s-p.n.length*0.01});
+  }
+  res.sort((a,b)=>b.s-a.s);
+  if(!res.length||res[0].s<3)return[];
+  const top=res[0].s;
+  return res.filter(r=>r.s>=top-1.5).slice(0,3).map(r=>r.p);
+}
+const fmtPrice=v=>Number(v).toFixed(2).replace('.',',')+' €';
+function sayPrice(v){const e=Math.floor(v+1e-9),c=Math.round((v-e)*100);if(c===0)return e+' Euro';if(e===0)return c+' Cent';return e+' Euro '+c}
+
+function answer(q){
+  const n=norm(q);
+  if(!n)return;
+  const has=re=>re.test(n);
+  if(has(/oeffnungszeit|wann.*(offen|auf|geoeffnet|zu|schliess)|wie lange.*(offen|auf)|geoeffnet/))return reply(`Unsere Öffnungszeiten: ${cfg.hours}`,{t:cfg.hours});
+  if(has(/hermes|paket|post|dhl|sendung|abholen|abgeben/))return reply(cfg.post,{t:cfg.post});
+  if(has(/lotto|eurojackpot|rubbel|tipp|lottoschein|jackpot/))return reply(cfg.lotto,{t:cfg.lotto});
+  if(has(/angebot|aktion|rabatt|guenstig/)&&cfg.offer)return reply(`Unser Angebot heute: ${cfg.offer}`,{t:cfg.offer});
+  if(has(/wer bist du|wie heisst du|was bist du|was kannst du/))return reply(`Ich bin der Roboter von ${cfg.shop}. Fragen Sie mich nach Preisen, Öffnungszeiten, Paketen oder Lotto.`);
+  if(has(/^(danke|dankeschoen|vielen dank)|danke/))return reply('Sehr gern! Einen schönen Tag noch.');
+  if(has(/^(hallo|hi|hey|guten (morgen|tag|abend)|moin|servus|salam|selam)\b/)&&n.split(' ').length<=3)return reply(cfg.greet);
+  const found=findProducts(q);
+  if(found.length===1){const p=found[0];return reply(`${p.name} kostet ${sayPrice(p.price)}.`,{n:p.name,p:fmtPrice(p.price)})}
+  if(found.length>1){return reply(found.map(p=>`${p.name}: ${sayPrice(p.price)}`).join('. ')+'.',{list:found})}
+  reply('Das weiß ich leider noch nicht. Fragen Sie gern an der Kasse nach.');
+}
+
+let bubbleTimer;
+function showBubble(b){
+  const el=$('bubble');
+  if(!b){el.classList.remove('show');return}
+  if(b.list)el.innerHTML=b.list.map(p=>`<div class="n">${esc(p.name)} – <b style="color:#c0392b">${fmtPrice(p.price)}</b></div>`).join('');
+  else if(b.p)el.innerHTML=`<div class="n">${esc(b.n)}</div><div class="p">${b.p}</div>`;
+  else el.innerHTML=`<div class="t">${esc(b.t)}</div>`;
+  el.classList.add('show');clearTimeout(bubbleTimer);bubbleTimer=setTimeout(()=>el.classList.remove('show'),9000);
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let deVoice=null;
+function pickVoice(){const v=speechSynthesis.getVoices();deVoice=v.find(x=>/de[-_]DE/i.test(x.lang)&&/female|frau|anna|petra|helena/i.test(x.name))||v.find(x=>/de[-_]DE/i.test(x.lang))||v.find(x=>/^de/i.test(x.lang))||null}
+if('speechSynthesis'in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
+
+let talking=false,mouthTimer;
+function reply(text,bubble){
+  showBubble(bubble||null);
+  if(!('speechSynthesis'in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang='de-DE';if(deVoice)u.voice=deVoice;u.rate=1.02;u.pitch=1.15;
+  u.onstart=()=>{talking=true;setMood('talk')};
+  u.onend=u.onerror=()=>{talking=false;setMood('idle')};
+  speechSynthesis.speak(u);
+}
+
+function setMood(m){
+  clearInterval(mouthTimer);const mouth=$('mouth');
+  if(m==='talk'){let o=false;mouthTimer=setInterval(()=>{o=!o;mouth.setAttribute('d',o?'M165 232 Q200 282 235 232 Q200 250 165 232':'M162 238 Q200 262 238 238')},140)}
+  else if(m==='listen'){mouth.setAttribute('d','M175 245 Q200 245 225 245')}
+  else mouth.setAttribute('d','M160 238 Q200 262 240 238');
+  const col=m==='listen'?'#9cff8a':'#6fe3ff';
+  document.querySelectorAll('.eye').forEach(e=>e.style.fill=col);mouth.style.stroke=col;
+}
+
+let lookX=0,lookY=0,curX=0,curY=0;
+function animate(){
+  curX+=(lookX-curX)*0.12;curY+=(lookY-curY)*0.12;
+  const dx=curX*22,dy=curY*18;
+  [['pL','sL',125],['pR','sR',275]].forEach(([p,s,cx])=>{$(p).setAttribute('cx',cx+dx);$(p).setAttribute('cy',120+dy);$(s).setAttribute('cx',cx+8+dx);$(s).setAttribute('cy',110+dy)});
+  requestAnimationFrame(animate);
+}
+animate();
+function blink(){
+  const eyes=document.querySelectorAll('#eyes ellipse');
+  eyes.forEach(e=>e.setAttribute('ry',6));
+  ['pL','pR','sL','sR'].forEach(i=>$(i).style.opacity=0);
+  setTimeout(()=>{eyes.forEach(e=>e.setAttribute('ry',62));['pL','pR','sL','sR'].forEach(i=>$(i).style.opacity=1)},130);
+  setTimeout(blink,2500+Math.random()*4000);
+}
+setTimeout(blink,3000);
+let lastSeen=0,idleT=0;
+setInterval(()=>{if(Date.now()-lastSeen>1500&&Date.now()-idleT>2500){idleT=Date.now();lookX=(Math.random()-.5)*1.2;lookY=(Math.random()-.5)*0.6}},500);
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,listening=false;
+function listen(){
+  if(!SR){$('heard').textContent='Spracherkennung wird hier nicht unterstützt – bitte Chrome benutzen oder tippen.';$('typeRow').classList.add('show');return}
+  if(listening){rec&&rec.stop();return}
+  speechSynthesis&&speechSynthesis.cancel();
+  rec=new SR();rec.lang='de-DE';rec.interimResults=true;rec.maxAlternatives=1;
+  rec.onstart=()=>{listening=true;$('mic').classList.add('on');$('mic').textContent='🎤 Ich höre…';setMood('listen');$('heard').textContent=''};
+  rec.onresult=e=>{let t='',fin=false;for(const r of e.results){t+=r[0].transcript;if(r.isFinal)fin=true}$('heard').textContent='„'+t+'“';if(fin){rec.stop();answer(t)}};
+  rec.onerror=e=>{$('heard').textContent=e.error==='not-allowed'?'Mikrofon nicht erlaubt – bitte in Chrome freigeben.':(e.error==='no-speech'?'Nichts gehört – bitte nochmal.':'Fehler: '+e.error)};
+  rec.onend=()=>{listening=false;$('mic').classList.remove('on');$('mic').textContent='🎤 Sprechen';if(!talking)setMood('idle')};
+  try{rec.start()}catch(e){}
+}
+$('mic').onclick=listen;
+$('faceWrap').onclick=e=>{if(e.target.closest('#bubble'))return;listen()};
+$('kbd').onclick=()=>{$('typeRow').classList.toggle('show');if($('typeRow').classList.contains('show'))$('typeIn').focus()};
+const doType=()=>{const v=$('typeIn').value.trim();if(v){$('heard').textContent='„'+v+'“';answer(v);$('typeIn').value=''}};
+$('typeGo').onclick=doType;$('typeIn').onkeydown=e=>{if(e.key==='Enter')doType()};
+
+let camOn=false,detector=null,prev=null,present=false,presentSince=0,absentSince=Date.now(),lastGreet=0;
+async function startCam(){
+  if(camOn||!cfg.cam)return;
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+    const v=$('vid');v.srcObject=st;await v.play();camOn=true;$('camDot').classList.add('on');
+    loadDetector();loopCam();
+  }catch(e){$('heard').textContent='Kamera nicht verfügbar – Augen bewegen sich trotzdem.'}
+}
+async function loadDetector(){
+  try{
+    const m=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const fs=await m.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    detector=await m.FaceDetector.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'},runningMode:'VIDEO',minDetectionConfidence:0.5});
+  }catch(e){detector=null}
+}
+function seen(xn,yn){
+  lastSeen=Date.now();
+  const sx=cfg.mirror?-1:1;
+  lookX=Math.max(-1,Math.min(1,(0.5-xn)*2.2*sx));lookY=Math.max(-1,Math.min(1,(yn-0.45)*2));
+  if(!present){present=true;presentSince=Date.now();$('camDot').classList.add('face')}
+  if(cfg.auto&&Date.now()-presentSince>700&&Date.now()-absentSince>20000&&Date.now()-lastGreet>30000&&!talking&&!listening){lastGreet=Date.now();absentSince=Date.now();reply(cfg.greet+(cfg.offer?' Heute im Angebot: '+cfg.offer:''))}
+}
+function gone(){if(present&&Date.now()-lastSeen>2500){present=false;absentSince=Date.now();$('camDot').classList.remove('face')}}
+let lastT=0;
+function loopCam(){
+  const v=$('vid');
+  const now=performance.now();
+  if(now-lastT>120&&v.readyState>=2){
+    lastT=now;
+    if(detector){
+      try{const r=detector.detectForVideo(v,now);
+        if(r.detections&&r.detections.length){const b=r.detections.sort((a,b)=>b.boundingBox.width-a.boundingBox.width)[0].boundingBox;seen((b.originX+b.width/2)/v.videoWidth,(b.originY+b.height/2)/v.videoHeight)}else gone();
+      }catch(e){}
+    }else motion(v);
+  }
+  requestAnimationFrame(loopCam);
+}
+function motion(v){
+  const c=$('cv'),x=c.getContext('2d',{willReadFrequently:true});x.drawImage(v,0,0,64,48);
+  const d=x.getImageData(0,0,64,48).data;const g=new Uint8Array(64*48);
+  for(let i=0;i<g.length;i++)g[i]=(d[i*4]+d[i*4+1]+d[i*4+2])/3;
+  if(prev){let sx=0,sy=0,n=0;for(let y=0;y<48;y++)for(let xx=0;xx<64;xx++){const i=y*64+xx;if(Math.abs(g[i]-prev[i])>28){sx+=xx;sy+=y;n++}}
+    if(n>40)seen(sx/n/64,sy/n/48);else gone()}
+  prev=g;
+}
+
+async function wake(){try{if('wakeLock'in navigator){await navigator.wakeLock.request('screen')}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')wake()});
+
+$('startBtn').onclick=()=>{
+  $('start').classList.remove('show');
+  try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}
+  wake();startCam();
+  reply(`Hallo! Ich bin der Roboter von ${cfg.shop}. Tippen Sie auf mich und fragen Sie nach einem Preis.`);
+};
+
+function fillSettings(){$('sShop').value=cfg.shop;$('sGreet').value=cfg.greet;$('sHours').value=cfg.hours;$('sPost').value=cfg.post;$('sLotto').value=cfg.lotto;$('sOffer').value=cfg.offer;$('sCam').checked=cfg.cam;$('sMirror').checked=cfg.mirror;$('sAuto').checked=cfg.auto;$('csvInfo').textContent=`${products.length} Artikel geladen`+(products===DEMO?' (Beispielliste)':'')}
+$('gear').onclick=()=>{fillSettings();$('settings').classList.add('show')};
+$('close').onclick=()=>$('settings').classList.remove('show');
+$('save').onclick=()=>{cfg={shop:$('sShop').value,greet:$('sGreet').value,hours:$('sHours').value,post:$('sPost').value,lotto:$('sLotto').value,offer:$('sOffer').value,cam:$('sCam').checked,mirror:$('sMirror').checked,auto:$('sAuto').checked};store.set('cfg',cfg);$('settings').classList.remove('show');if(cfg.cam)startCam()};
+
+function parseLine(line,del){const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch==='"'){if(line[i+1]==='"'){cur+='"';i++}else q=false}else cur+=ch}else if(ch==='"')q=true;else if(ch===del){out.push(cur);cur=''}else cur+=ch}out.push(cur);return out.map(s=>s.trim())}
+const toNum=s=>{if(s==null)return NaN;s=String(s).replace(/[€\s]/g,'');if(/^\d{1,3}(\.\d{3})*,\d+$/.test(s))s=s.replace(/\./g,'');s=s.replace(',','.');return /^\d+(\.\d+)?$/.test(s)?parseFloat(s):NaN};
+$('csv').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{
+    const lines=String(r.result).replace(/^﻿/,'').split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length)return;
+    const first=lines[0];const del=[';','\t',','].sort((a,b)=>first.split(b).length-first.split(a).length)[0];
+    const head=parseLine(first,del).map(h=>norm(h));
+    let ni=head.findIndex(h=>/bezeich|artikel|produkt|name|beschreib|text/.test(h)&&!/nr|nummer|ean/.test(h));
+    let pi=head.findIndex(h=>/vk|verkauf|preis|price/.test(h)&&!/ek|einkauf/.test(h));
+    let start=1;
+    if(ni<0||pi<0){
+      const sample=lines.slice(0,30).map(l=>parseLine(l,del));const cols=Math.max(...sample.map(s=>s.length));
+      if(pi<0){let best=-1,bc=-1;for(let c=0;c<cols;c++){const k=sample.filter(s=>{const v=toNum(s[c]);return!isNaN(v)&&v>0&&v<500&&/[.,]\d{2}$/.test(s[c]||'')}).length;if(k>bc){bc=k;best=c}}pi=best}
+      if(ni<0){let best=-1,bl=-1;for(let c=0;c<cols;c++){if(c===pi)continue;const l=sample.reduce((a,s)=>a+(/[a-z]/i.test(s[c]||'')?(s[c]||'').length:0),0);if(l>bl){bl=l;best=c}}ni=best}
+      if(!isNaN(toNum(parseLine(first,del)[pi])))start=0;
+    }
+    const list=[];for(let i=start;i<lines.length;i++){const c=parseLine(lines[i],del);const n=c[ni],p=toNum(c[pi]);if(n&&!isNaN(p))list.push([n,p])}
+    if(list.length){products=list;store.set('products',list);buildIndex();$('csvInfo').textContent=`${list.length} Artikel geladen ✓ (Spalten: Name = ${ni+1}, Preis = ${pi+1})`}
+    else $('csvInfo').textContent='Keine Artikel erkannt – bitte Spalten Name und Preis prüfen.';
+  };
+  r.readAsText(f,'utf-8');
+};
+</script>
+</body>
+</html>
